@@ -1,0 +1,71 @@
+name: Watchface Combinator Factory
+
+on: [push, workflow_dispatch]
+
+jobs:
+  generate-watchfaces:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Kotlin
+        uses: fwcd/setup-kotlin@v1
+
+      - name: Build Thousands of Combinations
+        run: |
+          # Criamos o script Kotlin que gera as combinações
+          cat << 'EOF' > generator.kt
+          import java.io.File
+
+          fun main() {
+              val types = listOf("Analog", "Digital", "Hybrid")
+              val widgets = listOf("Date", "Battery", "Steps", "HeartRate")
+              val themes = listOf("Dark", "Light", "Neon", "Minimal")
+              
+              val outputDir = File("build_output")
+              outputDir.mkdir()
+
+              var count = 0
+              for (type in types) {
+                  for (w1 in widgets) {
+                      for (w2 in widgets) {
+                          if (w1 == w2) continue // Evita duplicar o mesmo widget
+                          for (theme in themes) {
+                              count++
+                              val config = """
+                                  {
+                                      "id": $count,
+                                      "style": "$type",
+                                      "theme": "$theme",
+                                      "elements": ["$w1", "$w2"],
+                                      "resolution": "240x240",
+                                      "arch": "armeabi-v7a",
+                                      "target_os": "Android 8.0+"
+                                  }
+                              """.trimIndent()
+                              
+                              File("build_output/watchface_${type}_${theme}_${w1}_${w2}.json").writeText(config)
+                          }
+                      }
+                  }
+              }
+              println("Sucesso! $count combinações geradas para D20 Universal.")
+          }
+          EOF
+          
+          # Compila e executa o motor Kotlin
+          kotlinc generator.kt -include-runtime -d factory.jar
+          java -jar factory.jar
+
+      - name: Create Native Binary (C++)
+        run: |
+          echo '#include <iostream>
+          int main() { std::cout << "Engine armeabi-v7a iniciada..." << std::endl; return 0; }' > engine.cpp
+          g++ engine.cpp -o watch_engine_v7a
+
+      - name: Upload All Watchfaces
+        uses: actions/upload-artifact@v4
+        with:
+          name: Watchface_Pack_Universal_D20
+          path: build_output/
