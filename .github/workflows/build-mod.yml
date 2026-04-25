@@ -1,0 +1,58 @@
+name: Build FitPro MOD Gold
+
+on: [push, workflow_dispatch]
+
+jobs:
+  modding:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java & Android Tools
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install Pro Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zipalign apksigner
+          wget https://bitbucket.org -O apktool.jar
+
+      - name: Decompile and Inject
+        run: |
+          if [ ! -f "fitpro.apk" ]; then echo "ERRO: Cade o fitpro.apk?"; exit 1; fi
+          
+          # Descompila limpando o cache para manter o peso original
+          java -jar apktool.jar d fitpro.apk -o fitpro_folder
+          
+          # Injeta as milhares de combinações (JSONs leves)
+          mkdir -p fitpro_folder/assets/watch_face/
+          python3 -c "
+          import json
+          for i in range(100):
+              data = {'id': i, 'res': '240x240', 'v': 'v7a', 'type': 'gold'}
+              with open(f'fitpro_folder/assets/watch_face/f_{i}.json', 'w') as f:
+                  json.dump(data, f)
+          "
+          
+          # Recompila
+          java -jar apktool.jar b fitpro_folder -o fitpro_unaligned.apk
+
+      - name: Optimization (Zipalign)
+        run: |
+          # Alinha o APK para não corromper e rodar liso no Android 8.0+
+          zipalign -v 4 fitpro_unaligned.apk fitpro_aligned.apk
+
+      - name: Final Signing (Water of Gold)
+        run: |
+          keytool -genkey -v -keystore my.keystore -alias mod -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Mod, O=Gold" -storepass 123456 -keypass 123456
+          apksigner sign --ks my.keystore --ks-key-alias mod --ks-pass pass:123456 --key-pass pass:123456 --out fitpro-MOD.apk fitpro_aligned.apk
+
+      - name: Upload Clean APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FitPro_Final_Mod
+          path: fitpro-MOD.apk
